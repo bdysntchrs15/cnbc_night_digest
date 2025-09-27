@@ -9,7 +9,6 @@ import pytz
 KST = pytz.timezone("Asia/Seoul")
 WINDOW_END = time(6, 0)     # 오늘 06:00 KST
 WINDOW_HOURS = 24           # 전날 06:00 ~ 오늘 06:00
-MAX_ITEMS = 60              # 요약 안정성 위해 상한
 
 # ---- 유틸 ----
 def day_window_6to6(now: datetime | None = None):
@@ -45,6 +44,31 @@ def load_feeds(path="feeds.txt"):
     with open(path, "r", encoding="utf-8") as f:
         return [l.strip() for l in f if l.strip() and not l.strip().startswith("#")]
 
+def clean_summary(raw: str, limit: int = 600) -> str:
+    """
+    RSS summary/description을 요약 힌트로 사용하기 위해
+    - HTML 태그 제거
+    - 공백 정리
+    - 길이 컷
+    """
+    if not raw:
+        return ""
+    # 태그 제거
+    txt = re.sub(r"<[^>]+>", " ", raw)
+    # HTML 엔터티 간단 정리
+    txt = (txt.replace("&nbsp;", " ")
+              .replace("&amp;", "&")
+              .replace("&lt;", "<")
+              .replace("&gt;", ">")
+              .replace("&quot;", '"')
+              .replace("&#39;", "'"))
+    # 공백 정규화
+    txt = re.sub(r"\s+", " ", txt).strip()
+    # 길이 컷
+    if limit and len(txt) > limit:
+        txt = txt[:limit].rstrip() + "…"
+    return txt
+
 # ---- 메인 ----
 def main():
     os.makedirs("out", exist_ok=True)
@@ -60,6 +84,7 @@ def main():
             if not title or not link:
                 continue
 
+            # 발행 시각 후보 → KST 변환
             dt_raw = (
                 e.get("published")
                 or e.get("updated")
@@ -75,6 +100,15 @@ def main():
             if not (start_kst <= pub_kst <= end_kst):
                 continue
 
+            # RSS summary/description 추출(요약 힌트로 사용)
+            summary_raw = (
+                e.get("summary")
+                or e.get("description")
+                or (e.get("summary_detail", {}) or {}).get("value")
+                or ""
+            )
+            summary = clean_summary(summary_raw, limit=600)
+
             items.append({
                 "title": re.sub(r"\s+", " ", title),
                 "link": link.split("#")[0],
@@ -82,9 +116,10 @@ def main():
                 "ts": pub_kst,
                 "date_str": pub_kst.strftime("%Y-%m-%d"),
                 "time_str": pub_kst.strftime("%H:%M"),
+                "summary": summary,
             })
 
-    # 중복 제거(링크+제목 보조) 및 정렬
+    # 중복 제거(링크+제목 보조) 및 최신순 정렬
     seen = set()
     uniq = []
     for it in sorted(items, key=lambda x: x["ts"], reverse=True):
@@ -94,21 +129,21 @@ def main():
         seen.add(key)
         uniq.append(it)
 
-    # 항목 상한
-    if MAX_ITEMS and len(uniq) > MAX_ITEMS:
-        uniq = uniq[:MAX_ITEMS]
-
     # 헤더 날짜(오늘 날짜) 및 윈도 문자열
     header_date = end_kst.strftime("%Y-%m-%d")
-    window_str  = f'{(start_kst).strftime("%m/%d %H:%M")}∼{(end_kst).strftime("%m/%d %H:%M")} KST'
+    window_str  = f'{start_kst.strftime("%m/%d %H:%M")}∼{end_kst.strftime("%m/%d %H:%M")} KST'
 
     def row(i):
         # 항목에 KST 시간/날짜를 명시(프롬프트 규칙 6(d)와 호환)
+        desc = f'<div class="desc">{i["summary"]}</div>' if i.get("summary") else ""
         return (
-            f'<li><span class="t">{i["time_str"]}</span> '
+            f'<li>'
+            f'<span class="t">{i["time_str"]}</span> '
             f'<span class="d">{i["date_str"]}</span> · '
             f'<strong>{i["src"]}</strong> · '
-            f'<a href="{i["link"]}">{i["title"]}</a></li>'
+            f'<a href="{i["link"]}">{i["title"]}</a>'
+            f'{desc}'
+            f'</li>'
         )
 
     body = "\n".join(row(i) for i in uniq) if uniq else \
@@ -117,8 +152,10 @@ def main():
     html = f"""<!doctype html><meta charset="utf-8">
 <style>
 body{{font-family:system-ui,-apple-system,Segoe UI,Roboto;max-width:860px;margin:40px auto;line-height:1.6}}
-h1{{margin-bottom:.2rem}} ul{{padding-left:1.2rem}} li{{margin:.45rem 0}}
+h1{{margin-bottom:.2rem}} ul{{padding-left:1.2rem}} li{{margin:.55rem 0}}
 small{{color:#666}} .t{{font-variant-numeric:tabular-nums}} .d{{margin-left:.35rem;color:#555}}
+.desc{{margin:.35rem 0 .1rem;color:#333}}
+a{{text-decoration:none}} a:hover{{text-decoration:underline}}
 </style>
 <h1>간밤 CNBC 주요 뉴스 — {header_date}</h1>
 <small>윈도: {window_str} · 피드 6종 · 중복 제거</small>
@@ -133,7 +170,7 @@ small{{color:#666}} .t{{font-variant-numeric:tabular-nums}} .d{{margin-left:.35r
         f.write(html)
 
     print(f"OK: {len(uniq)} items → out/daily.html, out/{header_date}.html")
-    print(f"Window: {start_kst.isoformat()} ~ {end_kst.isoformat()}")
+    print(f"Window: {start_kst.isoformat()} ∼ {end_kst.isoformat()}")
 
 if __name__ == "__main__":
     main()
