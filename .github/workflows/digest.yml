@@ -1,7 +1,8 @@
 name: nightly-digest
+
 on:
   schedule:
-    - cron: "30 21 * * *"   # 서울 06:30 == UTC 21:30
+    - cron: "30 21 * * *"   # 서울 06:30 = UTC 21:30
   workflow_dispatch:
 
 jobs:
@@ -9,23 +10,35 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - run: pip install -r requirements.txt
+      - name: Install deps
+        run: pip install -r requirements.txt
 
       - name: Build nightly digest
         run: python pipeline.py
+
+      # (선택) 파이프라인이 날짜본을 만들지 못한 경우 대비
+      - name: Ensure dated copy exists
+        run: |
+          D=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          if [ -f out/daily.html ]; then
+            cp -f out/daily.html "out/${D}.html"
+          fi
 
       - name: Commit outputs
         run: |
           D=$(TZ=Asia/Seoul date +%Y-%m-%d)
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add out/
+          git add -f out/                 # <- ignore에 있어도 강제 추가
           git commit -m "digest: $D" || echo "no changes"
           git push
