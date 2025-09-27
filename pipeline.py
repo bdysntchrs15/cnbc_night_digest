@@ -7,14 +7,13 @@ import pytz
 
 # 설정
 KST = pytz.timezone("Asia/Seoul")
-WINDOW_START_HHMM = (22, 0)  # 전날 22:00
-WINDOW_END_HHMM   = (6, 0)   # 당일 06:00
 
-def last_night_window(now=None):
-    """전날 22:00 ~ 오늘 06:00 (KST) 절대 구간 반환"""
+def collection_window(now=None):
+    """전날 06:01 ~ 오늘 06:00 (KST) 절대 구간 반환"""
     now = now or datetime.now(KST)
-    end = KST.localize(datetime.combine(now.date(), time(*WINDOW_END_HHMM)))
-    start = end - timedelta(hours=8)
+    end = KST.localize(datetime.combine(now.date(), time(6, 0)))        # 오늘 06:00
+    prev_date = (end - timedelta(days=1)).date()
+    start = KST.localize(datetime.combine(prev_date, time(6, 1)))       # 전날 06:01
     return start, end
 
 def to_kst(dt_any):
@@ -42,7 +41,7 @@ def load_feeds(path="feeds.txt"):
 
 def main():
     os.makedirs("out", exist_ok=True)
-    start_kst, end_kst = last_night_window()
+    start_kst, end_kst = collection_window()
     items = []
 
     # 수집
@@ -59,7 +58,7 @@ def main():
             pub_kst = to_kst(dt_raw)
             if pub_kst is None:
                 continue
-            # 절대 구간 필터
+            # 절대 구간 필터 (전날 06:01 ~ 오늘 06:00)
             if not (start_kst <= pub_kst <= end_kst):
                 continue
             items.append({
@@ -90,7 +89,7 @@ def main():
     if uniq:
         body = "\n".join(row(i) for i in uniq)
     else:
-        body = '<li>수집된 항목이 없습니다. (간밤 창: 전날 22:00∼당일 06:00 KST)</li>'
+        body = '<li>수집된 항목이 없습니다. (수집 창: 전날 06:01∼당일 06:00 KST)</li>'
 
     html = f"""<!doctype html><meta charset="utf-8">
 <style>
