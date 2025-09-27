@@ -26,7 +26,6 @@ jobs:
       - name: Build nightly digest
         run: python pipeline.py
 
-      # (선택) 파이프라인이 날짜본을 만들지 못한 경우 대비
       - name: Ensure dated copy exists
         run: |
           D=$(TZ=Asia/Seoul date +%Y-%m-%d)
@@ -39,6 +38,6 @@ jobs:
           D=$(TZ=Asia/Seoul date +%Y-%m-%d)
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f out/                 # <- ignore에 있어도 강제 추가
+          git add -f out/                 # ignore에 있어도 강제 추가
           git commit -m "digest: $D" || echo "no changes"
           git push
