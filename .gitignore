@@ -1,0 +1,13 @@
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Virtual env
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# out/는 커밋 대상(무시하지 않음)
+!out/
