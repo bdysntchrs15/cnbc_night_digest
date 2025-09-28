@@ -1,43 +1,51 @@
+# File: .github/workflows/digest.yml
 name: nightly-digest
 
 on:
   schedule:
-    - cron: "30 21 * * *"   # 서울 06:30 = UTC 21:30
+    - cron: "30 21 * * *" # 매일 06:30 KST (UTC 21:30)
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    env:
+      TZ: Asia/Seoul
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Install deps
-        run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Build nightly digest
+      - name: Run pipeline
         run: python pipeline.py
 
       - name: Ensure dated copy exists
         run: |
-          D=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          D=$(date +%Y-%m-%d)
           if [ -f out/daily.html ]; then
             cp -f out/daily.html "out/${D}.html"
+          else
+            echo "out/daily.html not found"; exit 1
           fi
 
       - name: Commit outputs
         run: |
-          D=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          D=$(date +%Y-%m-%d)
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f out/                 # ignore에 있어도 강제 추가
-          git commit -m "digest: $D" || echo "no changes"
+          git add -f out/
+          git commit -m "digest: ${D}" || echo "no changes"
           git push
